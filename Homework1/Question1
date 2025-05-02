@@ -1,1 +1,119 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri May  2 10:50:48 2025
+
+@author: pverma
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ------------------ Define parameters -----------------------------------------
+def default_pars(**kwargs):
+    pars = {}
+    pars['V_th'] = -54.     # spike threshold [mV]
+    pars['V_reset'] = -80.  # reset potential [mV]
+    pars['tau_m'] = 10.     # membrane time constant [ms]
+    pars['R_m'] = 10.       # membrane resistance [MΩ]
+    pars['V_init'] = -70.   # initial potential = E [mV]
+    pars['E_L'] = -70.      # leak reversal potential [mV]
+    pars['tref'] = 0.       # refractory time (ms)
+
+    # simulation parameters
+    pars['T'] = 500.        # total duration (ms)
+    pars['dt'] = 0.1        # time step (ms)
+    pars['range_t'] = np.arange(0, pars['T'], pars['dt'])  # time array
+
+    for k in kwargs:
+        pars[k] = kwargs[k]
+
+    return pars
+
+# ------------------ LIF simulation --------------------------------------------
+def run_LIF(pars, Iinj_amp):
+    V_th, V_reset = pars['V_th'], pars['V_reset']
+    tau_m, R_m = pars['tau_m'], pars['R_m']
+    V_init, E_L = pars['V_init'], pars['E_L']
+    dt, t = pars['dt'], pars['range_t']
+    Lt = t.size
+
+    # Initialize
+    v = np.zeros(Lt)
+    v[0] = V_init
+    Iinj = np.zeros(Lt)
+
+    # Inject current from 100 to 400 ms
+    Iinj[(t >= 100) & (t <= 400)] = Iinj_amp
+
+    spks = []
+
+    for i in range(Lt - 1):
+        if v[i] >= V_th:
+            spks.append(t[i])
+            v[i] = V_reset
+
+        dv = dt / tau_m * (E_L - v[i] + R_m * Iinj[i])
+        v[i+1] = v[i] + dv
+
+    return v, np.array(spks)
+
+# ------------------ Theoretical firing rate -----------------------------------
+def r_isi_theoretical(pars, I):
+    Rm, tau_m = pars['R_m'], pars['tau_m']
+    E, Vth, Vreset = pars['E_L'], pars['V_th'], pars['V_reset']
+    num = Rm * I + E - Vreset
+    den = Rm * I + E - Vth
+    if den <= 0 or num <= 0:
+        return 0.0
+    return 1000. / (tau_m * np.log(num / den))  # convert to Hz
+
+# ------------------ Run simulations for multiple currents ---------------------
+def simulate_multiple_Iinj(Ie_values):
+    pars = default_pars()
+
+    plt.figure(figsize=(12, 8))
+
+    rates_theory = []
+    rates_sim = []
+
+    for idx, Ie in enumerate(Ie_values):
+        v, spikes = run_LIF(pars, Ie)
+
+        plt.subplot(2, 3, idx+1)
+        plt.plot(pars['range_t'], v)
+        plt.title(f'Ie = {Ie:.1f} nA')
+        plt.xlabel('Time (ms)')
+        plt.ylabel('V (mV)')
+        plt.ylim([-90, -40])
+        plt.grid(True)
+
+        # Calculate firing rate
+        if len(spikes) > 1:
+            isi = np.diff(spikes)
+            r_sim = 1000. / np.mean(isi)
+        else:
+            r_sim = 0.0
+
+        r_theory = r_isi_theoretical(pars, Ie)
+        rates_theory.append(r_theory)
+        rates_sim.append(r_sim)
+
+    plt.tight_layout()
+    plt.show()
+
+    # Firing rate comparison plot
+    plt.figure(figsize=(6, 5))
+    plt.plot(Ie_values, rates_sim, 'o-', label='Simulated rate')
+    plt.plot(Ie_values, rates_theory, 's--', label='Theoretical rate')
+    plt.xlabel('Injected current Ie (nA)')
+    plt.ylabel('Firing rate (Hz)')
+    plt.title('Firing rate vs Input current')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+# --------------------------------------------------------------
+Ie_values = np.array([1.0, 1.5, 2.0, 2.5, 3.0, 3.5])  
+simulate_multiple_Iinj(Ie_values)
 
